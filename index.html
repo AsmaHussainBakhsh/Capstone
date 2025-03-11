@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Camera Live Stream</title>
+  <style>
+    @charset "utf-8";
+
+    * {
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    body {
+      background: #f0f2f5;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      padding: 2rem;
+    }
+
+    h1 {
+      color: #2d3436;
+      text-align: center;
+      margin-bottom: 2rem;
+      font-size: 2.5rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    button {
+      padding: 1rem 2rem;
+      border: none;
+      border-radius: 8px;
+      background: #546e7a;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background: #37474f;
+      transform: translateY(-2px);
+    }
+
+    video {
+      width: 100%;
+      border-radius: 8px;
+      aspect-ratio: 16/9;
+      background: black;
+    }
+
+    #recordingsList {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      gap: 1rem;
+    }
+
+    .recording-item {
+      background: #f8f9fa;
+      padding: 1rem;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .recording-item:hover {
+      transform: translateX(5px);
+      background: #e9ecef;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .stream-status {
+      text-align: center;
+      padding: 1rem;
+      margin: 1rem 0;
+      border-radius: 8px;
+    }
+
+    .error {
+      background: #ffeef0;
+      color: #d93025;
+    }
+
+    .success {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .playback-modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+    }
+
+    .modal-content {
+      position: relative;
+      background-color: #fefefe;
+      margin: 2% auto;
+      padding: 20px;
+      width: 80%;
+      max-width: 800px;
+      border-radius: 8px;
+    }
+
+    .close {
+      position: absolute;
+      right: 20px;
+      top: 10px;
+      color: #aaa;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .close:hover {
+      color: #333;
+    }
+
+    #playbackVideo {
+      width: 100%;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+  /* Additional styles for authentication UI */
+  #authContainer, #mainContainer {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+  }
+  #authContainer input {
+    display: block;
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  #authContainer button {
+    padding: 0.5rem 1rem;
+    margin-right: 1rem;
+  }
+  .hidden {
+    display: none;
+  }
+  #authMessage {
+    margin-top: 1rem;
+    font-weight: bold;
+  }
+  .error-message {
+    color: red;
+  }
+  .success-message {
+    color: green;
+  }
+  #mainContainer {
+    max-width: 1200px; /* Same as the original container width */
+    margin: 0 auto;
+    padding: 2rem;
+  }
+</style>
+</head>
+<body>
+<!-- Authentication Container -->
+<div id="authContainer">
+  <h1>Welcome to the Security Camera System</h1>
+  <div id="authForms">
+    <!-- Registration Form -->
+    <div id="registerForm">
+      <h2>Register</h2>
+      <input type="text" id="registerUsername" placeholder="Username">
+      <input type="password" id="registerPassword" placeholder="Password">
+      <input type="text" id="registerRole" placeholder="Role (e.g., admin, user)">
+      <button id="registerBtn">Register</button>
+    </div>
+    <!-- Add this inside the #authContainer div -->
+    <div id="qrCodeContainer" class="hidden">
+      <h2>Scan QR Code</h2>
+      <img id="qrCodeImage" src="" alt="QR Code">
+      <p>Or enter the secret manually: <span id="manualSecret"></span></p>
+      <input type="text" id="totpToken" placeholder="Enter Google Authenticator Token">
+      <button id="verifyTotpBtn">Verify Token</button>
+    </div>
+    <hr>
+    <!-- Login Form -->
+    <div id="loginForm">
+      <h2>Login</h2>
+      <input type="text" id="loginUsername" placeholder="Username">
+      <input type="password" id="loginPassword" placeholder="Password">
+      <button id="loginBtn">Login</button>
+    </div>
+    <!-- Token Verification Form (hidden until after login) -->
+    <div id="tokenForm" class="hidden">
+      <h2>Enter Your Token</h2>
+      <input type="text" id="userToken" placeholder="Paste your token here">
+      <button id="verifyTokenBtn">Verify Token</button>
+    </div>
+  </div>
+  <div id="authMessage"></div>
+</div>
+
+<!-- Main Camera Interface (hidden until authentication passes) -->
+<div id="mainContainer" class="hidden">
+  <div class="container">
+    <h1>Security Camera System</h1>
+    
+    <!-- Logout Button -->
+    <button id="logoutBtn" style="float: right; margin-bottom: 1rem;">Logout</button>
+
+    <div class="controls">
+      <button id="btnLive">Live View</button>
+      <button id="btnRecordings">Recordings</button>
+    </div>
+    
+
+    <div id="liveStream">
+      <div class="stream-status success">Live stream connected</div>
+      <video id="video" controls autoplay playsinline></video>
+    </div>
+
+    <div id="recordings" class="hidden">
+      <div class="stream-status">Showing recorded sessions</div>
+      <ul id="recordingsList"></ul>
+    </div>
+  </div>
+
+  <div id="playbackModal" class="playback-modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <video id="playbackVideo" controls></video>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.10"></script>
+  <script>
+    // -------------------
+    // Camera Streaming Code (same as before)
+    let hls;
+    const video = document.getElementById('video');
+    const liveSection = document.getElementById('liveStream');
+    const recordingsSection = document.getElementById('recordings');
+    const statusDiv = document.querySelector('.stream-status');
+    let ws;
+
+    function setupModal() {
+      const modal = document.getElementById('playbackModal');
+      const span = document.querySelector('.close');
+
+      span.onclick = () => {
+        modal.style.display = 'none';
+        const playbackVideo = document.getElementById('playbackVideo');
+        playbackVideo.pause();
+        playbackVideo.removeAttribute('src');
+        playbackVideo.load();
+      }
+
+      window.onclick = (event) => {
+        if (event.target === modal) {
+          modal.style.display = 'none';
+          const playbackVideo = document.getElementById('playbackVideo');
+          playbackVideo.pause();
+          playbackVideo.removeAttribute('src');
+          playbackVideo.load();
+        }
+      }
+    }
+
+    function connectWebSocket() {
+      // Change protocol from ws:// to wss:// when using HTTPS
+      ws = new WebSocket(`wss://${window.location.host}`);
+    
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        updateStatus('Live stream connected', 'success');
+      };
+    
+      ws.onmessage = (event) => {
+        const newRecording = JSON.parse(event.data);
+        const list = document.getElementById('recordingsList');
+        if (list.firstChild?.textContent.includes('No recordings')) {
+          list.innerHTML = '';
+        }
+        list.insertAdjacentHTML('afterbegin', `
+          <li class="recording-item" data-filename="${newRecording.filename}">
+            <span>${newRecording.title}</span>
+            <span>${new Date(newRecording.date).toLocaleString()}</span>
+          </li>
+        `);
+      };
+    
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateStatus('Connection error - retrying...', 'error');
+        setTimeout(connectWebSocket, 3000);
+      };
+    
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        updateStatus('Connection lost - reconnecting...', 'error');
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+    
+    async function initPlayer() {
+      try {
+        const response = await fetch('/hls/playlist.m3u8');
+        if (!response.ok) throw new Error('Stream unavailable');
+        
+        if (Hls.isSupported()) {
+          if (hls) hls.destroy();
+          hls = new Hls({
+            autoStartLoad: true,
+            maxBufferLength: 4,
+            maxMaxBufferLength: 10,
+            enableWorker: true,
+            lowLatencyMode: true
+          });
+          
+          hls.loadSource('/hls/playlist.m3u8');
+          hls.attachMedia(video);
+          
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(error => {
+              updateStatus('Click the video to start playback', 'error');
+              video.muted = true;
+              video.play();
+            });
+          });
+          
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            console.error('HLS Error:', data);
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  updateStatus('Network error - reconnecting...', 'error');
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  updateStatus('Media error - recovering...', 'error');
+                  hls.recoverMediaError();
+                  break;
+              }
+            }
+          });
+          
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = '/hls/playlist.m3u8';
+          video.addEventListener('loadedmetadata', () => video.play());
+        }
+        
+      } catch (err) {
+        console.error('Stream init error:', err);
+        updateStatus('Live stream unavailable - retrying...', 'error');
+        setTimeout(initPlayer, 5000);
+      }
+    }
+
+    async function loadRecordings() {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/recordings', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+        const data = await response.json();
+        const list = document.getElementById('recordingsList');
+        
+        list.innerHTML = data.length ? 
+          data.map(rec => `
+            <li class="recording-item" data-filename="${rec.filename}">
+              <span>${rec.title}</span>
+              <span>${new Date(rec.date).toLocaleString()}</span>
+            </li>
+          `).join('') : 
+          '<li class="recording-item">No recordings found</li>';
+
+        document.querySelectorAll('.recording-item').forEach(item => {
+          item.addEventListener('click', async () => {
+            const filename = item.dataset.filename;
+            const modal = document.getElementById('playbackModal');
+            const playbackVideo = document.getElementById('playbackVideo');
+            
+            try {
+              playbackVideo.src = `/api/recordings/${filename}/decrypted`;
+              modal.style.display = 'block';
+              playbackVideo.play().catch(error => {
+                playbackVideo.muted = true;
+                playbackVideo.play();
+              });
+            } catch (err) {
+              updateStatus(`Playback error: ${err.message}`, 'error');
+            }
+          });
+        });
+          
+      } catch (err) {
+        console.error('Recording load error:', err);
+        updateStatus('Failed to load recordings', 'error');
+      }
+    }
+
+    function updateStatus(message, type = 'info') {
+      statusDiv.className = `stream-status ${type}`;
+      statusDiv.textContent = message;
+      
+      if (type === 'error') {
+        setTimeout(() => {
+          statusDiv.textContent = 'Live stream connected';
+          statusDiv.className = 'stream-status success';
+        }, 5000);
+      }
+    }
+
+    document.getElementById('btnLive').addEventListener('click', () => {
+      recordingsSection.classList.add('hidden');
+      liveSection.classList.remove('hidden');
+      initPlayer();
+    });
+
+    document.getElementById('btnRecordings').addEventListener('click', () => {
+      liveSection.classList.add('hidden');
+      recordingsSection.classList.remove('hidden');
+      loadRecordings();
+    });
+
+    setupModal();
+    connectWebSocket();
+    initPlayer();
+    loadRecordings();
+    setInterval(loadRecordings, 300000);
+
+    document.addEventListener('click', () => {
+      if (video.paused) {
+        video.play().catch(() => {
+          video.muted = true;
+          video.play();
+        });
+      }
+    });
+    // -------------------
+  </script>
+</div>
+
+<!-- Authentication JavaScript -->
+<script>
+  // Global variable to store the current user's role
+  let currentUserRole = '';
+
+  
+  document.getElementById('registerBtn').addEventListener('click', async () => {
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;
+    const role = document.getElementById('registerRole').value;
+
+    console.log('Registration data:', { username, password, role }); // Log the data
+
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('authMessage').textContent = data.message;
+      document.getElementById('authMessage').className = 'success-message';
+      // Clear input fields
+      document.getElementById('registerUsername').value = '';
+      document.getElementById('registerPassword').value = '';
+      document.getElementById('registerRole').value = '';
+    } else {
+      document.getElementById('authMessage').textContent = data.message;
+      document.getElementById('authMessage').className = 'error-message';
+    }
+  });
+
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.qrCode) {
+      // Show QR code and secret for Google Authenticator setup
+      document.getElementById('qrCodeImage').src = `data:image/png;base64,${data.qrCode}`;
+      document.getElementById('manualSecret').textContent = data.secret;
+      document.getElementById('qrCodeContainer').classList.remove('hidden');
+      document.getElementById('loginForm').classList.add('hidden');
+    } else {
+      document.getElementById('authMessage').textContent = data.message;
+    }
+  });
+
+  document.getElementById('verifyTotpBtn').addEventListener('click', async () => {
+    const username = document.getElementById('loginUsername').value;
+    const token = document.getElementById('totpToken').value;
+    const res = await fetch('/api/auth/verify-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, token })
+    });
+    const data = await res.json();
+    if (data.message === 'Token verified successfully') {
+      // Save the user's role and adjust the UI accordingly
+      currentUserRole = data.user.role;
+      document.getElementById('authMessage').textContent = data.message;
+      document.getElementById('authContainer').classList.add('hidden');
+      document.getElementById('mainContainer').classList.remove('hidden');
+
+      // Hide the recordings button if the user is not admin
+      if (currentUserRole !== 'admin') {
+        document.getElementById('btnRecordings').classList.add('hidden');
+      }
+    } else {
+      document.getElementById('authMessage').textContent = data.message;
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    // Clear stored user info
+    currentUserRole = '';
+    
+    // Hide main content and show authentication container
+    document.getElementById('mainContainer').classList.add('hidden');
+    document.getElementById('authContainer').classList.remove('hidden');
+    
+    // Ensure that both login and registration forms are visible
+    document.getElementById('registerForm').classList.remove('hidden');
+    document.getElementById('loginForm').classList.remove('hidden');
+    
+    // Hide QR code and token verification forms if they were displayed
+    document.getElementById('qrCodeContainer').classList.add('hidden');
+    document.getElementById('tokenForm').classList.add('hidden');
+    
+    // Reset the recordings button visibility
+    document.getElementById('btnRecordings').classList.remove('hidden');
+    
+    // Optionally, clear any auth messages and input values
+    document.getElementById('authMessage').textContent = '';
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('registerUsername').value = '';
+    document.getElementById('registerPassword').value = '';
+    document.getElementById('registerRole').value = '';
+  });  
+</script>
+</body>
+</html>
